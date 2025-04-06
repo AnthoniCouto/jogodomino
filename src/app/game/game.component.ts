@@ -19,6 +19,12 @@ interface DominoData {
 export class GameComponent implements OnInit {
   @ViewChild('gameCanvas', { static: true }) canvasRef!: ElementRef<HTMLCanvasElement>;
 
+  public showMenu: boolean = true;
+  public numberOfPlayers: number = 2;
+  
+  private player1Pieces: THREE.Mesh[] = [];
+  private player2Pieces: THREE.Mesh[] = [];
+
   private renderer!: THREE.WebGLRenderer;
   private scene!: THREE.Scene;
   private camera!: THREE.PerspectiveCamera;
@@ -38,6 +44,18 @@ export class GameComponent implements OnInit {
   ngOnInit(): void {
     this.initScene();
     this.animate();
+    window.addEventListener('keydown', this.onKeyDown.bind(this));
+  }
+
+  onKeyDown(event: KeyboardEvent): void {
+    if (!this.selectedPiece) return;
+  
+    if (this.selectedPiece.rotation.z % (Math.PI * 2) === Math.PI / 2) {
+      this.selectedPiece.rotation.z += Math.PI / 2;
+    } else {
+      this.selectedPiece.rotation.z += Math.PI / 2;
+    }
+    this.selectedPiece.rotation.z %= Math.PI * 2;
   }
 
   initScene(): void {
@@ -46,7 +64,7 @@ export class GameComponent implements OnInit {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
   
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x228B22);
+    this.scene.background = new THREE.Color(0xFEEAAA);
   
     this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     this.camera.position.z = 20;
@@ -54,36 +72,76 @@ export class GameComponent implements OnInit {
     const light = new THREE.DirectionalLight(0xffffff, 1);
     light.position.set(10, 10, 10);
     this.scene.add(light);
-  
+
     this.createDominoPieces();
     canvas.addEventListener('mousedown', this.onMouseDown.bind(this));
-    canvas.addEventListener('mousemove', this.onMouseMove.bind(this)); // Adicionado
-    //canvas.addEventListener('mouseup', this.onMouseUp.bind(this));
+    canvas.addEventListener('mousemove', this.onMouseMove.bind(this));
+    canvas.addEventListener('mouseup', this.onMouseUp.bind(this));
+  }
+
+  onDoubleClick(event: MouseEvent): void {
+    if (!this.selectedPiece) return;
+  
+    if (this.selectedPiece.rotation.z % (Math.PI * 2) === Math.PI / 2) {
+      this.selectedPiece.rotation.z += Math.PI / 2;
+    } else {
+      this.selectedPiece.rotation.z += Math.PI / 2;
+    }
+    this.selectedPiece.rotation.z %= Math.PI * 2;
   }
 
   createDominoPieces(): void {
-    const geometry = new THREE.BoxGeometry(3, 5, 0.6);
+    const geometry = new THREE.PlaneGeometry(1.5, 3);
 
-    const usedPairs = new Set<string>();
+    for (let left = 0; left <= 6; left++) {
+      for (let right = left; right <= 6; right++) {
+        const canvas = this.generateDominoTexture(left, right);
+        const texture = new THREE.CanvasTexture(canvas);
+        const material = new THREE.MeshBasicMaterial({ map: texture });
+  
+        const domino = new THREE.Mesh(geometry, material);
+        domino.userData = { left, right, owner: null };
+  
+        const index = this.dominoPieces.length;
+        const row = Math.floor(index / 7);
+        const col = index % 7;
+        domino.position.set(col * 2 - 6, -row * 4 + 10, 0);
+  
+        this.scene.add(domino);
+        this.dominoPieces.push(domino);
+      }
+    }
 
-    for (let p = 0; p < 14; p++) {
-      let left: number;
-      let right: number;
-      do {
-        left = Math.floor(Math.random() * 7);
-        right = Math.floor(Math.random() * 7);
-      } while (usedPairs.has(`${left}-${right}`) || usedPairs.has(`${right}-${left}`));
-      usedPairs.add(`${left}-${right}`);
+    this.shuffleDominoPieces();
 
-      const canvas = this.generateDominoTexture(left, right);
-      const texture = new THREE.CanvasTexture(canvas);
-      const material = new THREE.MeshBasicMaterial({ map: texture });
-
-      const domino = new THREE.Mesh(geometry, material);
-      domino.userData = { left, right, owner: p % 2 === 0 ? 1 : 2 };
-      domino.position.set((p % 7) * 3.5 - 7.5, p < 7 ? -6 : -12, 0);
+    this.player1Pieces = this.dominoPieces.splice(0, 7);
+    this.player2Pieces = this.dominoPieces.splice(0, 7);
+  
+    this.player1Pieces.forEach((domino, index) => {
+      domino.position.set(-15, 10 - index * 3, 0);
       this.scene.add(domino);
-      this.dominoPieces.push(domino);
+    });
+  
+    this.player2Pieces.forEach((domino, index) => {
+      domino.position.set(15, 10 - index * 3, 0);
+      this.scene.add(domino);
+    });
+  
+    const backMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    this.dominoPieces.forEach((domino, index) => {
+      domino.material = backMaterial;
+      domino.rotation.z = Math.PI;
+      const row = Math.floor(index / 7);
+      const col = index % 7;
+      domino.position.set(col * 2 - 6, -row * 4 + 10, 0);
+      this.scene.add(domino);
+    });
+  }
+
+  shuffleDominoPieces(): void {
+    for (let i = this.dominoPieces.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [this.dominoPieces[i], this.dominoPieces[j]] = [this.dominoPieces[j], this.dominoPieces[i]];
     }
   }
 
@@ -93,24 +151,40 @@ export class GameComponent implements OnInit {
     canvas.width = size;
     canvas.height = size * 2;
     const ctx = canvas.getContext('2d')!;
-
+  
     ctx.fillStyle = 'white';
     ctx.fillRect(0, 0, size, size * 2);
+  
     ctx.strokeStyle = 'black';
     ctx.lineWidth = 4;
     ctx.strokeRect(0, 0, size, size * 2);
+  
     ctx.beginPath();
     ctx.moveTo(0, size);
     ctx.lineTo(size, size);
     ctx.stroke();
-
+  
     ctx.fillStyle = 'black';
-    ctx.font = 'bold 48px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(String(left), size / 2, size / 2);
-    ctx.fillText(String(right), size / 2, size + size / 2);
-
+    const drawDots = (value: number, offsetY: number) => {
+      const positions = [
+        [],
+        [[0.5, 0.5]],
+        [[0.25, 0.25], [0.75, 0.75]],
+        [[0.25, 0.25], [0.5, 0.5], [0.75, 0.75]],
+        [[0.25, 0.25], [0.25, 0.75], [0.75, 0.25], [0.75, 0.75]],
+        [[0.25, 0.25], [0.25, 0.75], [0.5, 0.5], [0.75, 0.25], [0.75, 0.75]],
+        [[0.25, 0.25], [0.25, 0.75], [0.5, 0.25], [0.5, 0.75], [0.75, 0.25], [0.75, 0.75]],
+      ];
+      positions[value].forEach(([x, y]) => {
+        ctx.beginPath();
+        ctx.arc(x * size, y * size + offsetY, size * 0.05, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    };
+  
+    drawDots(left, 0);
+    drawDots(right, size);
+  
     return canvas;
   }
 
@@ -127,13 +201,22 @@ export class GameComponent implements OnInit {
     this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
   
     this.raycaster.setFromCamera(this.mouse, this.camera);
-    const intersects = this.raycaster.intersectObjects(this.dominoPieces);
+  
+    const allPieces = [...this.dominoPieces, ...this.player1Pieces, ...this.player2Pieces];
+    const intersects = this.raycaster.intersectObjects(allPieces);
   
     if (intersects.length > 0) {
       const selected = intersects[0].object as THREE.Mesh;
-      if (selected.userData['owner'] === this.currentPlayer) {
-        this.selectedPiece = selected;
+  
+      if (this.dominoPieces.includes(selected)) {
+        const dominoData = selected.userData as DominoData;
+        const canvas = this.generateDominoTexture(dominoData.left, dominoData.right);
+        const texture = new THREE.CanvasTexture(canvas);
+        selected.material = new THREE.MeshBasicMaterial({ map: texture });
+        selected.rotation.z = 0;
       }
+  
+      this.selectedPiece = selected;
     }
   }
 
@@ -141,50 +224,18 @@ export class GameComponent implements OnInit {
     if (!this.selectedPiece) return;
   
     const rect = this.renderer.domElement.getBoundingClientRect();
-    this.mouse.x = ((event.clientX - rect.left) / rect.width) * 95 - 40;
-    this.mouse.y = -((event.clientY - rect.top) / rect.height) * 95 + 40;
-  
+    this.mouse.x = ((event.clientX - rect.left) / rect.width) * 100 - 50;
+    this.mouse.y = -((event.clientY - rect.top) / rect.height) * 100 + 50;
+   
     const vector = new THREE.Vector3(this.mouse.x, this.mouse.y, 0.5).unproject(this.camera);
     this.selectedPiece.position.set(vector.x, vector.y, 0);
   }
 
-  //onMouseUp(event: MouseEvent): void {
-  //  if (!this.selectedPiece) return;
-  //
-  //  const data: DominoData = this.selectedPiece.userData as DominoData;
-  //  const canPlace = this.validateMove(data);
-  //
-  //  if (canPlace) {
-  //    if (this.placedDominoes.length === 0) {
-  //      this.boardEnds = [data.left, data.right];
-  //      this.selectedPiece.position.set(0, 0, 0);
-  //    } else {
-  //      const [leftEnd, rightEnd] = this.boardEnds;
-  //
-  //      if (data.left === leftEnd || data.right === leftEnd) {
-  //        this.boardEnds[0] = data.left === leftEnd ? data.right : data.left;
-  //        const newX = this.placedDominoes[0].position.x - 4;
-  //        this.selectedPiece.position.set(newX, 0, 0);
-  //        this.rotatePiece(this.selectedPiece, data.left === leftEnd);
-  //        this.placedDominoes.unshift(this.selectedPiece);
-  //      } else if (data.left === rightEnd || data.right === rightEnd) {
-  //        this.boardEnds[1] = data.left === rightEnd ? data.right : data.left;
-  //        const newX = this.placedDominoes[this.placedDominoes.length - 1].position.x + 4;
-  //        this.selectedPiece.position.set(newX, 0, 0);
-  //        this.rotatePiece(this.selectedPiece, data.right === rightEnd);
-  //        this.placedDominoes.push(this.selectedPiece);
-  //      }
-  //    }
-  //
-  //    this.dominoPieces = this.dominoPieces.filter(p => p !== this.selectedPiece);
-  //    this.selectedPiece = null;
-  //    this.checkWinCondition();
-  //    this.switchPlayer();
-  //  } else {
-  //    this.selectedPiece.position.y = this.selectedPiece.position.y < -7 ? -6 : -12;
-  //    this.selectedPiece = null;
-  //  }
-  //}
+  onMouseUp(event: MouseEvent): void {
+    if (!this.selectedPiece) return;
+  
+    this.selectedPiece = null;
+  }
 
   rotatePiece(piece: THREE.Mesh, flip: boolean): void {
     if (flip) {
