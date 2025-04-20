@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import * as THREE from 'three';
 import { Vector2 } from 'three';
 
+
 interface DominoData {
   left: number;
   right: number;
@@ -19,9 +20,6 @@ interface DominoData {
 export class GameComponent implements OnInit {
   @ViewChild('gameCanvas', { static: true }) canvasRef!: ElementRef<HTMLCanvasElement>;
 
-  public showMenu: boolean = true;
-  public numberOfPlayers: number = 2;
-  
   private player1Pieces: THREE.Mesh[] = [];
   private player2Pieces: THREE.Mesh[] = [];
 
@@ -38,24 +36,25 @@ export class GameComponent implements OnInit {
   public turnText = 'Jogador 1';
 
   private placedDominoes: THREE.Mesh[] = [];
-
   private boardEnds: [number, number] = [-1, -1];
 
   ngOnInit(): void {
     this.initScene();
     this.animate();
+    this.moveCameraToPlayer(); // Mover a câmera para o jogador 1 no início
     window.addEventListener('keydown', this.onKeyDown.bind(this));
   }
-
   onKeyDown(event: KeyboardEvent): void {
     if (!this.selectedPiece) return;
   
-    if (this.selectedPiece.rotation.z % (Math.PI * 2) === Math.PI / 2) {
+    // Verificar se a tecla pressionada é "R"
+    if (event.key.toLowerCase() === 'r') {
+      // Girar a peça em 90 graus no eixo Z
       this.selectedPiece.rotation.z += Math.PI / 2;
-    } else {
-      this.selectedPiece.rotation.z += Math.PI / 2;
+  
+      // Garantir que a rotação seja normalizada (entre 0 e 2 * PI)
+      this.selectedPiece.rotation.z %= Math.PI * 2;
     }
-    this.selectedPiece.rotation.z %= Math.PI * 2;
   }
 
   initScene(): void {
@@ -64,40 +63,37 @@ export class GameComponent implements OnInit {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
   
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0xFEEAAA);
+    this.scene.background = new THREE.Color(0xb46622);
   
     this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     this.camera.position.z = 20;
   
-    const light = new THREE.DirectionalLight(0xffffff, 1);
-    light.position.set(10, 10, 10);
-    this.scene.add(light);
-
+    // Luz ambiente para iluminação geral
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    this.scene.add(ambientLight);
+  
+    // Luz direcional para criar sombras e destacar as peças
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    directionalLight.position.set(10, 10, 10);
+    directionalLight.castShadow = true;
+    this.scene.add(directionalLight);
+  
     this.createDominoPieces();
+  
+    // Adicionar eventos de mouse
     canvas.addEventListener('mousedown', this.onMouseDown.bind(this));
     canvas.addEventListener('mousemove', this.onMouseMove.bind(this));
     canvas.addEventListener('mouseup', this.onMouseUp.bind(this));
   }
 
-  onDoubleClick(event: MouseEvent): void {
-    if (!this.selectedPiece) return;
-  
-    if (this.selectedPiece.rotation.z % (Math.PI * 2) === Math.PI / 2) {
-      this.selectedPiece.rotation.z += Math.PI / 2;
-    } else {
-      this.selectedPiece.rotation.z += Math.PI / 2;
-    }
-    this.selectedPiece.rotation.z %= Math.PI * 2;
-  }
-
   createDominoPieces(): void {
-    const geometry = new THREE.PlaneGeometry(1.5, 3);
-
+    const geometry = new THREE.BoxGeometry(1.5, 3, 0.3); // Adicionando profundidade às peças
+  
     for (let left = 0; left <= 6; left++) {
       for (let right = left; right <= 6; right++) {
         const canvas = this.generateDominoTexture(left, right);
         const texture = new THREE.CanvasTexture(canvas);
-        const material = new THREE.MeshBasicMaterial({ map: texture });
+        const material = new THREE.MeshStandardMaterial({ map: texture });
   
         const domino = new THREE.Mesh(geometry, material);
         domino.userData = { left, right, owner: null };
@@ -105,35 +101,44 @@ export class GameComponent implements OnInit {
         const index = this.dominoPieces.length;
         const row = Math.floor(index / 7);
         const col = index % 7;
-        domino.position.set(col * 2 - 6, -row * 4 + 10, 0);
+        domino.position.set(col * 2 - 6, -row * 4 + 10, 0.15); // Ajustar posição para considerar a profundidade
   
         this.scene.add(domino);
         this.dominoPieces.push(domino);
       }
     }
-
+  
     this.shuffleDominoPieces();
-
-    this.player1Pieces = this.dominoPieces.splice(0, 7);
-    this.player2Pieces = this.dominoPieces.splice(0, 7);
   
     this.player1Pieces.forEach((domino, index) => {
-      domino.position.set(-15, 10 - index * 3, 0);
+      domino.position.set(-15, 10 - index * 3, 0.15);
+      domino.rotation.z = Math.PI / 2; // Virar para a esquerda
+      this.scene.add(domino);
+    });
+    
+    this.player2Pieces.forEach((domino, index) => {
+      domino.position.set(15, 10 - index * 3, 0.15);
+      domino.rotation.z = -Math.PI / 2; // Virar para a direita
+      this.scene.add(domino);
+    });
+  
+    this.player1Pieces.forEach((domino, index) => {
+      domino.position.set(-15, 10 - index * 3, 0.15);
       this.scene.add(domino);
     });
   
     this.player2Pieces.forEach((domino, index) => {
-      domino.position.set(15, 10 - index * 3, 0);
+      domino.position.set(15, 10 - index * 3, 0.15);
       this.scene.add(domino);
     });
   
-    const backMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    const backMaterial = new THREE.MeshStandardMaterial({ color:0xf0f0f0 });
     this.dominoPieces.forEach((domino, index) => {
       domino.material = backMaterial;
       domino.rotation.z = Math.PI;
       const row = Math.floor(index / 7);
       const col = index % 7;
-      domino.position.set(col * 2 - 6, -row * 4 + 10, 0);
+      domino.position.set(col * 2 - 6, -row * 4 + 10, 0.15);
       this.scene.add(domino);
     });
   }
@@ -193,6 +198,31 @@ export class GameComponent implements OnInit {
     this.renderer.render(this.scene, this.camera);
   }
 
+  moveCameraToPlayer(): void {
+    const targetX = this.currentPlayer === 1 ? -20 : 20; // Jogador 1 à esquerda, Jogador 2 à direita
+    const targetY = 0;
+  
+    // Animação suave para mover a câmera
+    const duration = 1000; // 1 segundo
+    const startX = this.camera.position.x;
+    const startY = this.camera.position.y;
+    const startTime = performance.now();
+  
+    const animateCamera = (time: number) => {
+      const elapsed = time - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+  
+      this.camera.position.x = startX + (targetX - startX) * progress;
+      this.camera.position.y = startY + (targetY - startY) * progress;
+  
+      if (progress < 1) {
+        requestAnimationFrame(animateCamera);
+      }
+    };
+  
+    requestAnimationFrame(animateCamera);
+  }
+
   onMouseDown(event: MouseEvent): void {
     if (this.winner) return;
   
@@ -207,7 +237,9 @@ export class GameComponent implements OnInit {
   
     if (intersects.length > 0) {
       const selected = intersects[0].object as THREE.Mesh;
+
   
+      // Revelar a peça se estiver virada de cabeça para baixo
       if (this.dominoPieces.includes(selected)) {
         const dominoData = selected.userData as DominoData;
         const canvas = this.generateDominoTexture(dominoData.left, dominoData.right);
@@ -216,7 +248,7 @@ export class GameComponent implements OnInit {
         selected.rotation.z = 0;
       }
   
-      this.selectedPiece = selected;
+      this.selectedPiece = selected; // Seleciona a peça clicada
     }
   }
 
@@ -234,7 +266,18 @@ export class GameComponent implements OnInit {
   onMouseUp(event: MouseEvent): void {
     if (!this.selectedPiece) return;
   
+    if (!this.placedDominoes.includes(this.selectedPiece)) {
+      this.placedDominoes.push(this.selectedPiece);
+  
+      // Centralizar a peça jogada no tabuleiro
+      this.selectedPiece.position.set(0, 0, 0.15);
+      this.selectedPiece.rotation.z = 0; // Garantir que a peça fique alinhada
+    }
+  
     this.selectedPiece = null;
+  
+    this.checkWinCondition(); // Verificar se o jogo terminou
+    this.switchPlayer();
   }
 
   rotatePiece(piece: THREE.Mesh, flip: boolean): void {
@@ -255,6 +298,42 @@ export class GameComponent implements OnInit {
   switchPlayer(): void {
     this.currentPlayer = this.currentPlayer === 1 ? 2 : 1;
     this.turnText = `Jogador ${this.currentPlayer}`;
+    this.moveCameraToPlayer(); // Mover a câmera para o jogador atual
+  
+    // Material para ocultar as peças (viradas de cabeça para baixo)
+    const backMaterial = new THREE.MeshBasicMaterial({ color: 0xf0f0f0 });
+  
+    // Atualizar as peças do jogador 1
+    this.player1Pieces.forEach(domino => {
+      if (this.currentPlayer === 1) {
+        // Jogador 1: Mostrar as peças
+        const dominoData = domino.userData as DominoData;
+        const canvas = this.generateDominoTexture(dominoData.left, dominoData.right);
+        const texture = new THREE.CanvasTexture(canvas);
+        domino.material = new THREE.MeshBasicMaterial({ map: texture });
+        domino.rotation.z = 0; // Garantir que as peças estejam na posição correta
+      } else if (!this.placedDominoes.includes(domino)) {
+        // Jogador 2: Ocultar as peças do jogador 1 que não foram jogadas
+        domino.material = backMaterial;
+        domino.rotation.z = Math.PI; // Virar de cabeça para baixo
+      }
+    });
+  
+    // Atualizar as peças do jogador 2
+    this.player2Pieces.forEach(domino => {
+      if (this.currentPlayer === 2) {
+        // Jogador 2: Mostrar as peças
+        const dominoData = domino.userData as DominoData;
+        const canvas = this.generateDominoTexture(dominoData.left, dominoData.right);
+        const texture = new THREE.CanvasTexture(canvas);
+        domino.material = new THREE.MeshBasicMaterial({ map: texture });
+        domino.rotation.z = 0; // Garantir que as peças estejam na posição correta
+      } else if (!this.placedDominoes.includes(domino)) {
+        // Jogador 1: Ocultar as peças do jogador 2 que não foram jogadas
+        domino.material = backMaterial;
+        domino.rotation.z = Math.PI; // Virar de cabeça para baixo
+      }
+    });
   }
 
   checkWinCondition(): void {
