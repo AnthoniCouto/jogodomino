@@ -2,7 +2,7 @@ import { Component, ElementRef, OnInit, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import * as THREE from 'three';
 import { Vector2 } from 'three';
-
+import { ActivatedRoute } from '@angular/router';
 
 interface DominoData {
   left: number;
@@ -18,11 +18,12 @@ interface DominoData {
   styleUrls: ['./game.component.scss']
 })
 export class GameComponent implements OnInit {
+  constructor(private route: ActivatedRoute) {}
+
   @ViewChild('gameCanvas', { static: true }) canvasRef!: ElementRef<HTMLCanvasElement>;
 
   private player1Pieces: THREE.Mesh[] = [];
   private player2Pieces: THREE.Mesh[] = [];
-
   private renderer!: THREE.WebGLRenderer;
   private scene!: THREE.Scene;
   private camera!: THREE.PerspectiveCamera;
@@ -32,18 +33,47 @@ export class GameComponent implements OnInit {
   private dominoPieces: THREE.Mesh[] = [];
   private selectedPiece: THREE.Mesh | null = null;
   private currentPlayer: number = 1;
+  private localPlayer: number = 1; // Adiciona isso!
   public winner: number | null = null;
   public turnText = 'Jogador 1';
-
   private placedDominoes: THREE.Mesh[] = [];
   private boardEnds: [number, number] = [-1, -1];
 
   ngOnInit(): void {
+    this.route.queryParams.subscribe(params => {
+      const playerParam = params['player'];
+      this.currentPlayer = playerParam === '2' ? 2 : 1;
+      this.turnText = `Jogador ${this.currentPlayer}`;
+      this.switchPlayer();
+    });
+  
     this.initScene();
     this.animate();
-    this.moveCameraToPlayer(); // Mover a câmera para o jogador 1 no início
+  
     window.addEventListener('keydown', this.onKeyDown.bind(this));
+  
+    window.addEventListener('storage', (event) => {
+      if (event.key === 'lastMove') {
+        const move = JSON.parse(event.newValue!);
+        this.updateGameState(move);
+      }
+    });
   }
+  
+  
+  
+
+  updateGameState(move: any): void {
+    const piece = this.dominoPieces.find(p => p.userData['left'] === move.piece.left && p.userData['right'] === move.piece.right);
+    if (piece) {
+      piece.position.set(move.position.x, move.position.y, move.position.z);
+      piece.rotation.set(move.rotation.x, move.rotation.y, move.rotation.z);
+      this.placedDominoes.push(piece);
+      this.currentPlayer = move.currentPlayer === 1 ? 2 : 1; // Alternar jogador
+      this.switchPlayer();
+    }
+  }
+
   onKeyDown(event: KeyboardEvent): void {
     if (!this.selectedPiece) return;
   
@@ -110,17 +140,8 @@ export class GameComponent implements OnInit {
   
     this.shuffleDominoPieces();
   
-    this.player1Pieces.forEach((domino, index) => {
-      domino.position.set(-15, 10 - index * 3, 0.15);
-      domino.rotation.z = Math.PI / 2; // Virar para a esquerda
-      this.scene.add(domino);
-    });
-    
-    this.player2Pieces.forEach((domino, index) => {
-      domino.position.set(15, 10 - index * 3, 0.15);
-      domino.rotation.z = -Math.PI / 2; // Virar para a direita
-      this.scene.add(domino);
-    });
+    this.player1Pieces = this.dominoPieces.splice(0, 7);
+    this.player2Pieces = this.dominoPieces.splice(0, 7);
   
     this.player1Pieces.forEach((domino, index) => {
       domino.position.set(-15, 10 - index * 3, 0.15);
@@ -198,33 +219,9 @@ export class GameComponent implements OnInit {
     this.renderer.render(this.scene, this.camera);
   }
 
-  moveCameraToPlayer(): void {
-    const targetX = this.currentPlayer === 1 ? -20 : 20; // Jogador 1 à esquerda, Jogador 2 à direita
-    const targetY = 0;
-  
-    // Animação suave para mover a câmera
-    const duration = 1000; // 1 segundo
-    const startX = this.camera.position.x;
-    const startY = this.camera.position.y;
-    const startTime = performance.now();
-  
-    const animateCamera = (time: number) => {
-      const elapsed = time - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-  
-      this.camera.position.x = startX + (targetX - startX) * progress;
-      this.camera.position.y = startY + (targetY - startY) * progress;
-  
-      if (progress < 1) {
-        requestAnimationFrame(animateCamera);
-      }
-    };
-  
-    requestAnimationFrame(animateCamera);
-  }
-
   onMouseDown(event: MouseEvent): void {
-    if (this.winner) return;
+    
+    if (this.winner || this.currentPlayer !== this.localPlayer) return;
   
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -237,6 +234,7 @@ export class GameComponent implements OnInit {
   
     if (intersects.length > 0) {
       const selected = intersects[0].object as THREE.Mesh;
+  
 
   
       // Revelar a peça se estiver virada de cabeça para baixo
@@ -271,12 +269,19 @@ export class GameComponent implements OnInit {
   
       // Centralizar a peça jogada no tabuleiro
       this.selectedPiece.position.set(0, 0, 0.15);
-      this.selectedPiece.rotation.z = 0; // Garantir que a peça fique alinhada
+      this.selectedPiece.rotation.z = 0;
+  
+      // Salvar a jogada no localStorage
+      localStorage.setItem('lastMove', JSON.stringify({
+        piece: this.selectedPiece.userData,
+        position: this.selectedPiece.position,
+        rotation: this.selectedPiece.rotation,
+        currentPlayer: this.currentPlayer
+      }));
     }
   
     this.selectedPiece = null;
-  
-    this.checkWinCondition(); // Verificar se o jogo terminou
+    this.checkWinCondition();
     this.switchPlayer();
   }
 
@@ -296,42 +301,35 @@ export class GameComponent implements OnInit {
   }
 
   switchPlayer(): void {
-    this.currentPlayer = this.currentPlayer === 1 ? 2 : 1;
     this.turnText = `Jogador ${this.currentPlayer}`;
-    this.moveCameraToPlayer(); // Mover a câmera para o jogador atual
   
-    // Material para ocultar as peças (viradas de cabeça para baixo)
     const backMaterial = new THREE.MeshBasicMaterial({ color: 0xf0f0f0 });
   
     // Atualizar as peças do jogador 1
     this.player1Pieces.forEach(domino => {
       if (this.currentPlayer === 1) {
-        // Jogador 1: Mostrar as peças
         const dominoData = domino.userData as DominoData;
         const canvas = this.generateDominoTexture(dominoData.left, dominoData.right);
         const texture = new THREE.CanvasTexture(canvas);
         domino.material = new THREE.MeshBasicMaterial({ map: texture });
-        domino.rotation.z = 0; // Garantir que as peças estejam na posição correta
-      } else if (!this.placedDominoes.includes(domino)) {
-        // Jogador 2: Ocultar as peças do jogador 1 que não foram jogadas
+        domino.rotation.z = 0;
+      } else {
         domino.material = backMaterial;
-        domino.rotation.z = Math.PI; // Virar de cabeça para baixo
+        domino.rotation.z = Math.PI;
       }
     });
   
     // Atualizar as peças do jogador 2
     this.player2Pieces.forEach(domino => {
       if (this.currentPlayer === 2) {
-        // Jogador 2: Mostrar as peças
         const dominoData = domino.userData as DominoData;
         const canvas = this.generateDominoTexture(dominoData.left, dominoData.right);
         const texture = new THREE.CanvasTexture(canvas);
         domino.material = new THREE.MeshBasicMaterial({ map: texture });
-        domino.rotation.z = 0; // Garantir que as peças estejam na posição correta
-      } else if (!this.placedDominoes.includes(domino)) {
-        // Jogador 1: Ocultar as peças do jogador 2 que não foram jogadas
+        domino.rotation.z = 0;
+      } else {
         domino.material = backMaterial;
-        domino.rotation.z = Math.PI; // Virar de cabeça para baixo
+        domino.rotation.z = Math.PI;
       }
     });
   }
